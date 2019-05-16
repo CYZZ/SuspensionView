@@ -12,6 +12,13 @@
 #define kLeanProportion (8/55.0)
 #define kVerticalMargin 15.0
 
+/// 当前悬浮球所处的位置，上下左右
+typedef NS_ENUM(NSUInteger, SuspensionDir) {
+	SuspensionDirLeft,
+	SuspensionDirRight,
+	SuspensionDirTop,
+	SuspensionDirBottom,
+};
 
 @implementation ZYSuspensionView
 
@@ -75,6 +82,8 @@
     
     if(p.state == UIGestureRecognizerStateBegan) {
         self.alpha = 1;
+		///取消自动隐藏回调
+		[[self class] cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideLogoIcon) object:nil];
     }else if(p.state == UIGestureRecognizerStateChanged) {
         self.containerWindow.center = CGPointMake(panPoint.x, panPoint.y);
     }else if(p.state == UIGestureRecognizerStateEnded
@@ -122,9 +131,14 @@
             newCenter = CGPointMake(panPoint.x, screenHeight - centerYSpace);
         }
         
-        [UIView animateWithDuration:.25 animations:^{
-            self.containerWindow.center = newCenter;
-        }];
+//        [UIView animateWithDuration:.25 animations:^{
+//            self.containerWindow.center = newCenter;
+//        }];
+		[UIView animateWithDuration:0.25 animations:^{
+			self.containerWindow.center = newCenter;
+		} completion:^(BOOL finished) {
+			[self hideLogoAfterNotMoved];
+		}];
     }else{
         NSLog(@"pan state : %zd", p.state);
     }
@@ -157,6 +171,74 @@
 - (void)removeFromScreen
 {
     [ZYSuspensionManager destroyWindowForKey:self.memoryAddressKey];
+}
+
+///停止移动后，自动隐藏logo
+- (void)hideLogoAfterNotMoved {
+	[[self class] cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideLogoIcon) object:nil];
+	[self performSelector:@selector(hideLogoIcon) withObject:nil afterDelay:3.0];
+}
+
+- (void)hideLogoIcon {
+	if (self.hidden) {
+		return;
+	}
+	CGFloat screenWidth = [[UIScreen mainScreen] bounds].size.width;
+	CGFloat screenHeight = [[UIScreen mainScreen] bounds].size.height;
+	
+	///计算四个距离最小的吸附方向
+	SuspensionDir minDir = [self getCurrenDirection];
+	NSLog(@"minDir = %lu",(unsigned long)minDir);
+	[UIView animateWithDuration:0.2 animations:^{
+		switch (minDir) {
+			case SuspensionDirLeft:{
+				self.containerWindow.center = CGPointMake(0, self.containerWindow.center.y);
+				break;
+			}
+			case SuspensionDirRight:{
+				self.containerWindow.center = CGPointMake(screenWidth, self.containerWindow.center.y);
+				break;
+			}
+			case SuspensionDirTop:{
+				self.containerWindow.center = CGPointMake(self.containerWindow.center.x, 0);
+				break;
+			}
+			case SuspensionDirBottom:{
+				self.containerWindow.center = CGPointMake(self.containerWindow.center.x, screenHeight);
+				break;
+			}
+			default:
+				break;
+		}
+	} completion:^(BOOL finished) {
+	}];
+}
+
+- (SuspensionDir)getCurrenDirection {
+	CGFloat screenWidth = [[UIScreen mainScreen] bounds].size.width;
+	CGFloat screenHeight = [[UIScreen mainScreen] bounds].size.height;
+	
+	CGFloat left = fabs(self.containerWindow.center.x);
+	CGFloat right = fabs(screenWidth - left);
+	CGFloat top = fabs(self.containerWindow.center.y);
+	CGFloat bottom = fabs(screenHeight - top);
+	
+	CGFloat minSpace = 0;
+	if (self.leanType == ZYSuspensionViewLeanTypeHorizontal) {
+		minSpace = MIN(left, right);
+	}else{
+		minSpace = MIN(MIN(MIN(top, left), bottom), right);
+	}
+	
+	if (minSpace == left) {
+		return SuspensionDirLeft;
+	}else if (minSpace == right) {
+		return SuspensionDirRight;
+	}else if (minSpace == top) {
+		return SuspensionDirTop;
+	}else {
+		return SuspensionDirBottom;
+	}
 }
 
 #pragma mark - getter
